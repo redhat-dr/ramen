@@ -44,6 +44,9 @@ const (
 	// volume handle before uploading to S3. During restore, this annotation is read
 	// and the PV's volumeHandle is replaced with it.
 	destinationVolumeHandleAnnotation = "ramendr.openshift.io/destination-volume-handle"
+
+	// Annotation on the PVC which should contain the name of the VGR it belongs to
+	volumeGroupReplicationNameAnnotationKey = "replication.storage.openshift.io/volume-group-replication-name"
 )
 
 //nolint:gosec
@@ -837,6 +840,28 @@ func (v *VRGInstance) applyDestinationVolumeHandleToPV(
 	return nil
 }
 
+// If the PVC is part of a VolumeGroupReplication then its corresponding VR will be named
+// differently from the PVC, so looking it up by PVC.Name is not going to work. This function
+// checks to see if the PVC has an associated VGR which should contain a reference to the VR
+func (v *VRGInstance) getParentVRNameFromPVC(pvc *corev1.PersistentVolumeClaim) (string, error) {
+	vgrName, exists := pvc.Annotations[volumeGroupReplicationNameAnnotationKey]
+	if !exists {
+		return "", fmt.Errorf(
+			"PVC %s does not have the annotation '%s'. Unable to resolve parent VGR/VR",
+			pvc.Name,
+			volumeGroupReplicationNameAnnotationKey)
+	}
+
+	vgrObj := &volrep.VolumeGroupReplication{}
+	namespacedVGRName := types.NamespacedName{Name: vgrName, Namespace: pvc.Namespace}
+
+	if err := v.reconciler.Get(v.ctx, namespacedVGRName, vgrObj); err != nil {
+		return "", err
+	}
+
+	return vgrObj.Spec.VolumeReplicationName, nil
+}
+
 // annotateWithDestinationVolumeHandleForVolRep looks up the VolumeReplication for the PVC
 // and annotates the PV with the destination volume handle if available.
 func (v *VRGInstance) annotateWithDestinationVolumeHandleForVolRep(pvc *corev1.PersistentVolumeClaim) error {
@@ -854,9 +879,31 @@ func (v *VRGInstance) annotateWithDestinationVolumeHandleForVolRep(pvc *corev1.P
 	vrNamespacedName := types.NamespacedName{Name: pvc.Name, Namespace: pvc.Namespace}
 
 	if err := v.reconciler.Get(v.ctx, vrNamespacedName, volRep); err != nil {
-		v.log.Info(fmt.Sprintf("failed to get VR %s for PV %s err %s", pvc.Name, pv.Name, err))
+		v.log.Info(fmt.Sprintf(
+			"Failed to get VR %s for PV %s err %s. Checking to see if it belongs to a VGR...",
+			pvc.Name,
+			pv.Name,
+			err))
 
-		return err
+		parentVRName, err2 := v.getParentVRNameFromPVC(pvc)
+		if err2 != nil {
+			v.log.Info(fmt.Sprintf(
+				"failed to get VR for PV %s err %s. Failed to get parent VR Name from PVC %s.",
+				pv.Name,
+				err2,
+				pv.Name))
+
+			return err2
+		}
+
+		err3 := v.reconciler.Get(v.ctx, types.NamespacedName{Name: parentVRName, Namespace: pvc.Namespace}, volRep);
+		if err3 != nil {
+			v.log.Info(fmt.Sprintf("failed to get VR %s for PV %s err %s", parentVRName, pv.Name, err3))
+
+			return err3
+		}
+
+		v.log.Info(fmt.Sprintf("Successfully mapped PVC '%s' to VR '%s'", pvc.Name, volRep.Name))
 	}
 
 	available, err := v.destinationInfoAvailableOrSkip(volRep.Status.Conditions,
