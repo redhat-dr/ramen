@@ -892,14 +892,17 @@ func (v *VRGInstance) annotateWithDestinationVolumeHandleForVolRep(pvc *corev1.P
 				pv.Name,
 				err2,
 				pv.Name))
+
 			return err2
 		}
 
 		err3 := v.reconciler.Get(v.ctx, types.NamespacedName{Name: parentVRName, Namespace: pvc.Namespace}, volRep);
 		if err3 != nil {
 			v.log.Info(fmt.Sprintf("failed to get VR %s for PV %s err %s", parentVRName, pv.Name, err3))
+
 			return err3
 		}
+
 		v.log.Info(fmt.Sprintf("Successfully mapped PVC '%s' to VR '%s'", pvc.Name, volRep.Name))
 	}
 
