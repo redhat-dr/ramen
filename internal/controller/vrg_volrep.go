@@ -846,7 +846,10 @@ func (v *VRGInstance) applyDestinationVolumeHandleToPV(
 func (v *VRGInstance) getParentVRNameFromPVC(pvc *corev1.PersistentVolumeClaim) (string, error) {
 	vgrName, exists := pvc.Annotations[volumeGroupReplicationNameAnnotationKey]
 	if !exists {
-		return "", fmt.Errorf("PVC %s does not have the annotation '%s'. Unable to resolve parent VGR/VR", pvc.Name, volumeGroupReplicationNameAnnotationKey)
+		return "", fmt.Errorf(
+			"PVC %s does not have the annotation '%s'. Unable to resolve parent VGR/VR",
+			pvc.Name,
+			volumeGroupReplicationNameAnnotationKey)
 	}
 
 	vgrObj := &volrep.VolumeGroupReplication{}
@@ -876,15 +879,24 @@ func (v *VRGInstance) annotateWithDestinationVolumeHandleForVolRep(pvc *corev1.P
 	vrNamespacedName := types.NamespacedName{Name: pvc.Name, Namespace: pvc.Namespace}
 
 	if err := v.reconciler.Get(v.ctx, vrNamespacedName, volRep); err != nil {
-		v.log.Info(fmt.Sprintf("annotateWithDestinationVolumeHandle: Failed to get VR %s for PV %s err %s. Checking to see if it belongs to a VGR...", pvc.Name, pv.Name, err))
+		v.log.Info(fmt.Sprintf(
+			"Failed to get VR %s for PV %s err %s. Checking to see if it belongs to a VGR...",
+			pvc.Name,
+			pv.Name,
+			err))
 
 		parentVRName, err2 := v.getParentVRNameFromPVC(pvc)
 		if err2 != nil {
-			v.log.Info(fmt.Sprintf("failed to get VR for PV %s err %s. Failed to get parent VR Name from PVC %s.", pv.Name, err2, pv.Name))
+			v.log.Info(fmt.Sprintf(
+				"failed to get VR for PV %s err %s. Failed to get parent VR Name from PVC %s.",
+				pv.Name,
+				err2,
+				pv.Name))
 			return err2
 		}
 
-		if err3 := v.reconciler.Get(v.ctx, types.NamespacedName{Name: parentVRName, Namespace: pvc.Namespace}, volRep); err3 != nil {
+		err3 := v.reconciler.Get(v.ctx, types.NamespacedName{Name: parentVRName, Namespace: pvc.Namespace}, volRep);
+		if err3 != nil {
 			v.log.Info(fmt.Sprintf("failed to get VR %s for PV %s err %s", parentVRName, pv.Name, err3))
 			return err3
 		}
